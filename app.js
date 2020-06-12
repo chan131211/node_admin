@@ -49,15 +49,59 @@ app.post('/login', (req, res) => {
 //处理添加分类的数据
 app.post('/manage/category/add', (req, res) => {
   //接收数据
-  let {categoryName} = req.body
-  console.log(categoryName)
+  let {name, parentId} = req.body
   //添加数据库
-  Category.create({categoryName}, (err, doc) => {
+  Category.create({name, parentId}, (err, res2) => {
     if (!err) {
       res.json({
         status: 0,
-        doc
+        data: res2
       })
+    }
+  })
+})
+
+//处理获取分类列表
+app.get('/manage/category/list', (req, res) => {
+  //获取传递过来的parentId
+  let {parentId} = req.query
+
+  //根据parentId查询分类
+  Category.find({parentId}, (err, res2) => {
+    if (!err) {
+      res.json({
+        status: 0,
+        data: res2
+      })
+    }
+  })
+})
+
+//处理更新分类名称
+app.post('/manage/category/update', (req, res) => {
+  //接收传递过来的数据
+  let { _id, name } = req.body
+
+  // //修改条件
+  // let conditions = { _id }
+  
+  // //修改内容
+  // let update = {
+  //   $set: {name}
+  // }
+
+  Category.updateOne({ _id }, { $set: { name } }, err => {
+    if (err) {
+      res.json({
+        status: 1,
+        mes: '更新分类失败'
+      })
+    } else {
+      res.json({
+        status: 0,
+        mes: '更新分类成功'
+      })
+    
     }
   })
 })

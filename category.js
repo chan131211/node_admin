@@ -4,7 +4,10 @@ let mongoose = require('./db.js')
 let Schema = mongoose.Schema
 
 let CategorySchema = new Schema({
-    categoryName: {
+    name: {
+        type: String
+    },
+    parentId: {
         type: String
     }
 }) 
