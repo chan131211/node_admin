@@ -101,7 +101,34 @@ app.post('/manage/category/update', (req, res) => {
         status: 0,
         mes: '更新分类成功'
       })
-    
+
+    }
+  })
+})
+
+//处理获取所有分类列表
+app.get('/manage/category/all', (req, res) => {
+  Category.find({}, (err, result) => {
+    if (!err) {
+      res.json({
+        status: 0,
+        data: result
+      })
+    }
+  })
+})
+
+app.get('/manage/category/del', (req, res) => {
+  //接收get提交的_id
+  let { _id } = req.query
+  Category.deleteOne({ _id }, (err, result) => {
+    if (!err) {
+      if (result.ok === 1) {
+        res.json({
+          status: 0,
+          mes: '删除分类成功'
+        })
+      }
     }
   })
 })
