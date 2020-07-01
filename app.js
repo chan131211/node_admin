@@ -10,13 +10,13 @@ let bodyParser = require('body-parser')
 let User = require('./user.js')
 let Category = require('./category.js')
 let Product = require('./product.js')
+let Role = require('./role.js')
 
 //加载fs
 let fs = require('fs')
 
 //加载multiparty
 let multiparty = require('multiparty')
-const { url } = require('inspector')
 
 //创建项目
 let app = express()
@@ -40,9 +40,9 @@ app.post('/login', (req, res) => {
   // console.log(loginData)
 
   //从数据库中查找数据
-  User.findOne(loginData, {username: 1, password: 1}, (err, result) => {
+  User.findOne(loginData, {username: 1, password: 1, roleId: 1}, (err, result) => {
     if (err) {
-      console.log(err)
+      res.json({status: 2})
     } else {
       if (result) {
         res.json({ status: 0, result})
@@ -199,31 +199,57 @@ app.post('/manage/product/add', (req, res) => {
 
 //处理获取商品
 app.get('/manage/product/list', (req, res) => {
-  Product.find({}, (err, result) => {
+  //获取前台提交的数据
+  let pageNum = parseInt(req.query.pageNum) || 1
+  let pageSize = parseInt(req.query.pageSize)
+
+  //跳过数据的条数
+  let skip = (pageNum - 1) * pageSize
+  Product.count({}, (err, count) => {
     if (!err) {
-      res.json({
-        status: 0,
-        data: result
+      Product.find({})
+      .skip(skip)
+      .limit(pageSize)
+      .sort({ _id: -1})
+      .exec((err, result) => {
+        try {
+          if (!err && result) {
+            return res.json({
+              status: 0,
+              data: {
+                pageNum,
+                total: count,
+                pages: Math.ceil(count / pageSize),
+                pageSize,
+                list: result
+              }
+            })
+          }
+        } catch(e) {
+          return res.json({
+            status: 1,
+            mes: '获取数据失败'
+          })
+        }
       })
     }
   })
 })
 
-//根据name查找商品
+//根据name查找商品是否同名
 app.post('/manage/product/check', (req, res) => {
   //获取提交的name
   const name = req.body.name
   Product.findOne({ name }, (err, result) => {
     if (!err) {
-      res.json({
-        status: 0,
-        result: result === null ? false : true
-      })
+      let status = result != null ? 1 : 0
+      res.json({ status })
     } else {
-      res.json({
-        status: 1
+      res.json({ 
+        status: 2,
+        mes: '查询失败'
       })
-    } 
+    }
   })
 })
 
@@ -245,12 +271,36 @@ app.post('/manage/product/status', (req, res) => {
   })
 }) 
 
+//更新商品信息
+app.post('/manage/product/update', (req, res) => {
+  const { product, _id } = req.body
+  Product.updateOne({ _id }, {$set: product}, (err, result) => {
+    if (!err) {
+      res.json({
+        status: 0
+      })
+    } else {
+      res.json({
+        status: 1
+      })
+    }
+  })
+})
+
 //删除商品
-app.get('/manage/product/del', (req, res) => {
+app.post('/manage/product/del', (req, res) => {
   //获取提交的_id
-  const _id = req.query._id
+  const { _id, images } = req.body
+  const url = 'public/images/'
   Product.deleteOne({ _id }, (err, result) => {
     if (!err) {
+        images.map(image => {
+          fs.readdirSync(url).map(file => {
+            if(file === image) {
+              fs.unlink(url+image, err => {})
+            }
+          })
+        })
         res.json({
           status: 0,
           mes: '删除商品成功'
@@ -261,6 +311,197 @@ app.get('/manage/product/del', (req, res) => {
           mes: '删除商品失败'
         })
       }
+  })
+})
+
+// 根据_id获取更新的商品信息
+app.get('/manage/product/listone', (req, res) => {
+  const { _id } = req.query
+  Product.find({ _id}, (err, result) => {
+    if (!err) {
+      let imagesArr = []
+      let path = '/public/images/'
+      let images = result[0].images
+      images.forEach(image => {
+        let url = "http://localhost:" + PROT + path + image
+        imagesArr.push(url)
+      })
+      result[0].images = imagesArr
+      res.json({
+        status: 0,
+        data: result
+      })
+    }
+  })
+})
+
+//搜索框查询商品
+app.post('/manage/product/search', (req, res) => {
+  const { search, value } = req.body
+  let condition = ''
+  if( search === '0') {
+    condition = { name: {$regex: value}}
+  } else {
+    condition = { desc: {$regex: value}}
+  }
+  Product.find(condition, (err, result) => {
+    if (!err) {
+      res.json({
+        status: 0,
+        data: result
+      })
+    }
+  })
+})
+
+//添加角色
+app.post('/manage/role/add', (req, res) => {
+  //获取数据
+  const { name } = req.body
+  Role.create({ name})
+  .then(role => {
+    res.json({
+      status: 0,
+      data: role
+    })
+  }).catch(error => {
+    res.json({
+      status: 1,
+      mes: '添加角色失败'
+    })
+  })
+})
+
+//获取所有角色
+app.get('/manage/role/list', (req, res) => {
+  Role.find({})
+  .then(role => {
+    res.json({
+      status: 0,
+      data: role
+    })
+  }).catch(error => {
+    res.json({
+      status: 1,
+      mes: '获取角色失败'
+    })
+  })
+})
+
+//更新角色权限
+app.post('/manage/role/update', (req, res) => {
+  const { _id, auth_name, menus } = req.body.role
+  let auth_time = new Date(new Date().getTime() + + new Date().getTimezoneOffset() * 60 * 1000 + 8 * 60 * 60 * 1000)
+  Role.updateOne({ _id }, {$set: { menus, auth_name, auth_time}})
+  .then( result => {
+    res.json({
+      status: 0,
+      data: result
+    })
+  }).catch( error =>{
+    res.json({
+      status: 1,
+      mes: '修改角色权限失败'
+    })
+  })
+  
+})
+
+//根据_id查找角色权限
+app.get('/manage/role/check', (req, res) => {
+  const { _id } = req.query
+  Role.findOne({ _id }, { menus: 1 }, (err, result) => {
+    if (!err) {
+      res.json({
+        status: 0,
+        data: result
+      })
+    }
+  })
+})
+
+//添加用户
+app.post('/manage/user/add', (req, res) => {
+  //获取表单提交的数据
+  let { username, password, roleId, create_name } = req.body.user
+
+  User.create({ username, password, roleId, create_name }, (err, result) => {
+    if (!err) {
+      res.json({
+        status: 0,
+        mes: '添加用户成功',
+        data: result
+      })
+    } else {
+      res.json({
+        status: 1,
+        mes: '添加用户失败'
+      })
+    }
+  })
+})
+
+//获取所有用户
+app.post('/manage/user/list', (req, res) => {
+  User.find({}, (err, result) => {
+    if (!err) {
+      res.json({
+        status: 0,
+        data: result
+      })
+    }
+  })
+})
+
+//更新用户
+app.post('/manage/user/update', (req, res) => {
+  const {_id, password, roleId, update_name} = req.body.user
+  console.log(_id)
+  let update_time = new Date(new Date().getTime() + new Date().getTimezoneOffset() * 60 * 1000 + 8 * 60 * 60 * 1000)
+  User.updateOne({ _id }, {$set: { password, roleId, update_name, update_time}})
+  .then(result => { 
+    res.json({
+      status: 0,
+      mes: '更新用户成功'
+    })
+  }).catch( error => {
+    res.json({
+      status: 1,
+      mes: '更新用户失败'
+    })
+  })
+})
+
+//查找同名用户
+app.post('/manage/user/check', (req, res) => {
+  const username = req.body.username
+  User.findOne({ username })
+  .then( result => {
+    let arr = Object.keys(result)
+    if (arr.length > 0) {
+      res.json({ status: 0 })
+    } else {
+      res.json({ status: 1 })
+    }
+  }).catch(error => {
+    res.json({ status: 2 })
+  })
+})
+
+//删除用户
+app.get('/manage/user/delete', (req, res) => {
+  const { _id } = req.query
+  User.deleteOne({ _id })
+  .then(result => {
+    res.json({
+      status: 0,
+      mes: '删除用户成功'
+    })
+  }).catch( error => {
+    res.json({
+      status: 1,
+      mes: '删除用户失败'
+    })
   })
 })
 
